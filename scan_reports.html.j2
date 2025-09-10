@@ -69,3 +69,44 @@ padding:"inner"+a,content:b,"":"outer"+a},function(c,d){n.fn[d]=function(d,e){va
 </table>
                 <footer id="footer"><div class="container"><p class="muted credit">
                 Generated using <a href="https://www.ansible.com/">Ansible</a></p></div></footer></body></html>
+<h3 style="margin-top: 30px;">⚠️ Patch-Related Failed Rules</h3>
+<table class="table table-bordered table-striped">
+  <thead>
+    <tr>
+      <th>Host</th>
+      <th>Rule ID</th>
+      <th>Title</th>
+      <th>Severity</th>
+      <th>References</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for target_host in ansible_play_hosts_all %}
+    {% if hostvars[target_host].openscap_scan_results is defined %}
+      {% for rule in hostvars[target_host].openscap_scan_results.rule_results %}
+        {% if rule.result == 'fail' and (
+              'package' in rule.id or
+              'removed' in rule.title or
+              'installed' in rule.title or
+              'CVE' in rule.title or
+              'RHSA' in rule.title
+            ) %}
+        <tr>
+          <td>{{ target_host }}</td>
+          <td>{{ rule.id }}</td>
+          <td>{{ rule.title }}</td>
+          <td>{{ rule.severity }}</td>
+          <td>
+            {% if rule.references is defined %}
+              {{ rule.references | join(', ') }}
+            {% else %}
+              N/A
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+  </tbody>
+</table>
