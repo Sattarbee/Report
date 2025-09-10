@@ -1,47 +1,43 @@
+---
 - name: Get and report patches installed yesterday with HTML report
-  hosts: Linux
+  hosts: all
   become: yes
+  gather_facts: yes
+
   vars:
-    report_path: /tmp/patch_report_yesterday.html
+    report_path: "/tmp/patch_report.html"
 
   tasks:
+
     - name: Define yesterday's date string
       set_fact:
-        yesterday_date: "{{ lookup('pipe', 'date --date=\"yesterday\" \'+%d %b %Y\'') }}"
+        yesterday: "{{ lookup('pipe', 'date --date=\"yesterday\" \"+%d %b %Y\"') }}"
 
-    - name: Get list of installed patches with install dates
-      command: rpm -qa --last
-      register: rpm_list
+    - name: Get list of packages installed yesterday
+      shell: "rpm -qa --last | grep '{{ yesterday }}'"
+      register: installed_yesterday
+      changed_when: false
 
-    - name: Filter packages installed yesterday
-      set_fact:
-        patches_yesterday: "{{ rpm_list.stdout_lines | select('search', yesterday_date) | list }}"
-
-    - name: Generate HTML report content
-      set_fact:
-        html_content: |
+    - name: Format HTML report
+      copy:
+        dest: "{{ report_path }}"
+        content: |
           <html>
-          <head><title>Patch Report for {{ yesterday_date }}</title></head>
+          <head><title>Patch Report - {{ inventory_hostname }}</title></head>
           <body>
-            <h1>Installed Patches on {{ yesterday_date }}</h1>
-            {% if patches_yesterday | length > 0 %}
-              <ul>
-              {% for patch in patches_yesterday %}
-                <li>{{ patch }}</li>
-              {% endfor %}
-              </ul>
-            {% else %}
-              <p>No patches installed on {{ yesterday_date }}.</p>
-            {% endif %}
+          <h1>Patch Report for {{ inventory_hostname }}</h1>
+          <h2>Date: {{ yesterday }}</h2>
+          <pre>
+          {% if installed_yesterday.stdout %}
+          {{ installed_yesterday.stdout }}
+          {% else %}
+          No packages installed on {{ yesterday }}.
+          {% endif %}
+          </pre>
           </body>
           </html>
 
-    - name: Write HTML report to file on remote server
-      copy:
-        content: "{{ html_content }}"
-        dest: "{{ report_path }}"
-        mode: '0644'
-
-    - name: Show report location
+    - name: Display path to HTML report
       debug:
-        msg: "HTML patch report generated at {{ report_path }}"
+        msg: "HTML patch report saved to {{ report_path }}"
+
