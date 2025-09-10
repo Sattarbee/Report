@@ -1,55 +1,26 @@
-- name: Ensure Apache HTTP Server is installed
-  ansible.builtin.yum:
-    name: httpd
-    state: present
-  delegate_to: 172.25.225.97
-  run_once: true
-  become: true
-
-- name: Ensure Apache is started and enabled
-  ansible.builtin.service:
-    name: httpd
-    state: started
-    enabled: true
-  delegate_to: 172.25.225.97
-  run_once: true
-  become: true
-
-- name: Open HTTP port in firewall
-  ansible.posix.firewalld:
-    service: http
-    permanent: true
-    state: enabled
-    immediate: yes
-  delegate_to: 172.25.225.97
-  run_once: true
-  become: true
-
-- name: Ensure target directory exists
+- name: Ensure openscap/linuxsummary directory exists
   ansible.builtin.file:
-    path: "{{ file_path }}/linuxsummary"
+    path: /var/www/html/openscap/linuxsummary
     state: directory
     owner: root
     group: root
     mode: '0755'
   delegate_to: 172.25.225.97
   run_once: true
-  become: true
 
 - name: Template Summary Report
   ansible.builtin.template:
     src: "scan_reports.html.j2"
-    dest: "{{ file_path }}/linuxsummary/index.html"
+    dest: "/var/www/html/openscap/linuxsummary/index.html"
     owner: root
     group: root
     mode: '0644'
   delegate_to: 172.25.225.97
   run_once: true
-  become: true
 
 - name: DISPLAY LINK TO SUMMARY REPORT
   ansible.builtin.debug:
-    msg: "http://172.25.225.97/openscap/linuxsummary/"
+    msg: "http://172.25.225.97/openscap/linuxsummary/index.html"
   run_once: true
 
 - name: Template Summary Report for e-mail
@@ -62,7 +33,6 @@
   delegate_to: localhost
   run_once: true
   when: sendemailreport
-  become: true
 
 - name: Find all scap folders
   ansible.builtin.find:
@@ -75,14 +45,14 @@
 - name: Create Scap Report Index Page
   ansible.builtin.template:
     src: "indexpage.html.j2"
-    dest: "{{ file_path }}/index.html"
+    dest: "/var/www/html/openscap/index.html"
     owner: root
     group: root
     mode: '0644'
-  delegate_to: report.shadowman.dev
+  delegate_to: 172.25.225.97
   run_once: true
 
-- name: DISPLAY LINK TO SUMMARY REPORT
+- name: DISPLAY LINK TO SCAP INDEX PAGE
   ansible.builtin.debug:
     msg: "http://172.25.225.97/openscap/index.html"
   run_once: true
