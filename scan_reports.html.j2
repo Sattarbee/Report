@@ -69,7 +69,7 @@ padding:"inner"+a,content:b,"":"outer"+a},function(c,d){n.fn[d]=function(d,e){va
 </table>
                 <footer id="footer"><div class="container"><p class="muted credit">
                 Generated using <a href="https://www.ansible.com/">Ansible</a></p></div></footer></body></html>
-<h3 style="margin-top: 30px;">⚠️ Patch-Related Failed Rules</h3>
+<h3 style="margin-top: 30px;">✅ Patch-Related Passed Rules (Already Patched)</h3>
 <table class="table table-bordered table-striped">
   <thead>
     <tr>
@@ -84,7 +84,7 @@ padding:"inner"+a,content:b,"":"outer"+a},function(c,d){n.fn[d]=function(d,e){va
   {% for target_host in ansible_play_hosts_all %}
     {% if hostvars[target_host].openscap_scan_results is defined %}
       {% for rule in hostvars[target_host].openscap_scan_results.rule_results %}
-        {% if rule.result == 'fail' and (
+        {% if rule.result == 'pass' and (
               'package' in rule.id or
               'removed' in rule.title or
               'installed' in rule.title or
@@ -110,3 +110,4 @@ padding:"inner"+a,content:b,"":"outer"+a},function(c,d){n.fn[d]=function(d,e){va
   {% endfor %}
   </tbody>
 </table>
+
