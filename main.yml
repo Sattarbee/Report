@@ -1,58 +1,47 @@
-- name: Ensure openscap/linuxsummary directory exists
-  ansible.builtin.file:
-    path: /var/www/html/openscap/linuxsummary
-    state: directory
-    owner: root
-    group: root
-    mode: '0755'
-  delegate_to: 172.25.225.89
-  run_once: true
+- name: Get and report patches installed yesterday with HTML report
+  hosts: Linux
+  become: yes
+  vars:
+    report_path: /tmp/patch_report_yesterday.html
 
-- name: Template Summary Report
-  ansible.builtin.template:
-    src: "scan_reports.html.j2"
-    dest: "/var/www/html/openscap/linuxsummary/index.html"
-    owner: root
-    group: root
-    mode: '0644'
-  delegate_to: 172.25.225.89
-  run_once: true
+  tasks:
+    - name: Define yesterday's date string
+      set_fact:
+        yesterday_date: "{{ lookup('pipe', 'date --date=\"yesterday\" \'+%d %b %Y\'') }}"
 
-- name: DISPLAY LINK TO SUMMARY REPORT
-  ansible.builtin.debug:
-    msg: "http://172.25.225.89/openscap/linuxsummary/index.html"
-  run_once: true
+    - name: Get list of installed patches with install dates
+      command: rpm -qa --last
+      register: rpm_list
 
-- name: Template Summary Report for e-mail
-  ansible.builtin.template:
-    src: "scan_reports.html.j2"
-    dest: "/tmp/linux{{ ansible_date_time.iso8601 }}.html"
-    owner: root
-    group: root
-    mode: '0644'
-  delegate_to: 172.25.225.89
-  run_once: true
-  when: sendemailreport
+    - name: Filter packages installed yesterday
+      set_fact:
+        patches_yesterday: "{{ rpm_list.stdout_lines | select('search', yesterday_date) | list }}"
 
-- name: Find all scap folders
-  ansible.builtin.find:
-    paths: /var/www/html/openscap
-    file_type: directory
-  delegate_to: 172.25.225.89
-  run_once: true
-  register: completedreports
+    - name: Generate HTML report content
+      set_fact:
+        html_content: |
+          <html>
+          <head><title>Patch Report for {{ yesterday_date }}</title></head>
+          <body>
+            <h1>Installed Patches on {{ yesterday_date }}</h1>
+            {% if patches_yesterday | length > 0 %}
+              <ul>
+              {% for patch in patches_yesterday %}
+                <li>{{ patch }}</li>
+              {% endfor %}
+              </ul>
+            {% else %}
+              <p>No patches installed on {{ yesterday_date }}.</p>
+            {% endif %}
+          </body>
+          </html>
 
-- name: Create Scap Report Index Page
-  ansible.builtin.template:
-    src: "indexpage.html.j2"
-    dest: "/var/www/html/openscap/index.html"
-    owner: root
-    group: root
-    mode: '0644'
-  delegate_to: 172.25.225.89
-  run_once: true
+    - name: Write HTML report to file on remote server
+      copy:
+        content: "{{ html_content }}"
+        dest: "{{ report_path }}"
+        mode: '0644'
 
-- name: DISPLAY LINK TO SCAP INDEX PAGE
-  ansible.builtin.debug:
-    msg: "http://172.25.225.89/openscap/index.html"
-  run_once: true
+    - name: Show report location
+      debug:
+        msg: "HTML patch report generated at {{ report_path }}"
