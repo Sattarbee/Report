@@ -6,7 +6,7 @@
     scap_file: "/usr/share/xml/scap/ssg/content/ssg-rhel{{ ansible_distribution_major_version }}-ds.xml"
 
   tasks:
-    - name: Ensure openscap-scanner and scap-security-guide are installed (yum)
+    - name: Make sure openscap-scanner and scap-security guide are installed (yum)
       ansible.builtin.yum:
         name:
           - openscap-scanner
@@ -14,7 +14,7 @@
         state: present
       when: ansible_pkg_mgr == "yum"
 
-    - name: Ensure openscap-scanner and scap-security-guide are installed (dnf)
+    - name: Make sure openscap-scanner and scap-security guide are installed (dnf)
       ansible.builtin.dnf:
         name:
           - openscap-scanner
@@ -22,21 +22,38 @@
         state: present
       when: ansible_pkg_mgr == "dnf"
 
-    - name: List available SCAP profiles
+    - name: Check if SCAP Security Guide (SSG) file exists
+      ansible.builtin.stat:
+        path: "{{ scap_file }}"
+      register: scap_file_stat
+
+    - name: Fail if SCAP content is missing
+      ansible.builtin.fail:
+        msg: "SCAP content file {{ scap_file }} not found on target system."
+      when: not scap_file_stat.stat.exists
+
+    - name: Get available SCAP profiles
       ansible.builtin.command: "oscap info {{ scap_file }}"
       register: profile_list
+      changed_when: false
+
+    - name: Extract SCAP profile IDs
+      set_fact:
+        available_profiles: "{{ profile_list.stdout_lines | select('search', 'Id:') | list }}"
 
     - name: Show available SCAP profiles
       ansible.builtin.debug:
-        msg: "{{ profile_list.stdout_lines | select('search', 'Profile ID:') | list }}"
+        msg: "{{ available_profiles }}"
 
-    - name: Fail if content_profile is not defined
+    - name: Auto-select first available profile if content_profile not defined
+      set_fact:
+        content_profile: "{{ available_profiles[0].split(':')[-1] | trim }}"
+      when: content_profile is not defined and available_profiles | length > 0
+
+    - name: Fail if no SCAP profiles were found
       ansible.builtin.fail:
-        msg: >
-          You must define 'content_profile'.
-          Example: -e "content_profile=stig"
-          Available profiles are shown above.
-      when: content_profile is not defined
+        msg: "No SCAP profiles found in {{ scap_file }}."
+      when: available_profiles | length == 0
 
     - name: Create Compliance Reports
       ansible.builtin.command: >
@@ -50,7 +67,7 @@
 
     - name: Copy files to EE
       ansible.builtin.fetch:
-        src: "{{ item }}"
+        src: ./{{ item }}
         dest: "/tmp/{{ inventory_hostname }}/{{ item }}"
         flat: true
       loop:
@@ -94,3 +111,4 @@
         report_from_xml: "{{ scap_report_file.content | b64decode | ansible.utils.from_xml | replace('{http://checklists.nist.gov/xccdf/1.2}', '') }}"
         test_result: "{{ report_from_xml.Benchmark.TestResult }}"
         rule_result: "{{ test_result['rule-result'] }}"
+
