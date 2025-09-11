@@ -2,15 +2,8 @@
 - name: Run OpenSCAP Compliance Scan
   hosts: Linux
   become: true
-  vars:
-    # Default SCAP content profile (can be overridden with -e "content_profile=cis")
-    content_profile: standard
-
-    # Default destination path for reports
-    file_path: /var/www/html/openscap
-
   tasks:
-    - name: Make sure openscap-scanner and scap-security guide are installed (yum)
+    - name: Make sure openscap-scanner and scap-security guide are installed yum
       ansible.builtin.yum:
         name:
           - openscap-scanner
@@ -18,7 +11,7 @@
         state: present
       when: ansible_pkg_mgr == "yum"
 
-    - name: Make sure openscap-scanner and scap-security guide are installed (dnf)
+    - name: Make sure openscap-scanner and scap-security guide are installed dnf
       ansible.builtin.dnf:
         name:
           - openscap-scanner
@@ -34,15 +27,15 @@
       ansible.builtin.command: >
         oscap xccdf eval
         --profile xccdf_org.ssgproject.content_profile_{{ content_profile }}
-        --results report.xml
-        --report index.html
+        --results /tmp/report.xml
+        --report /tmp/index.html
         /usr/share/xml/scap/ssg/content/ssg-rhel{{ ansible_distribution_major_version }}-ds.xml
       register: command_result
       failed_when: "'Error' in command_result.stderr"
 
     - name: Copy files to EE
       ansible.builtin.fetch:
-        src: ./{{ item }}
+        src: "/tmp/{{ item }}"
         dest: "/tmp/{{ inventory_hostname }}/{{ item }}"
         flat: true
       loop:
