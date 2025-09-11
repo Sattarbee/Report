@@ -22,59 +22,36 @@
         state: present
       when: ansible_pkg_mgr == "dnf"
 
-    - name: Check if SCAP Security Guide (SSG) file exists
+    - name: Check if SCAP Security Guide (SSG) profile is available
       ansible.builtin.stat:
         path: "{{ scap_file }}"
       register: scap_file_stat
 
     - name: Fail if SCAP content is missing
       ansible.builtin.fail:
-        msg: "SCAP content file {{ scap_file }} not found on target system."
+        msg: "SCAP content file not found: {{ scap_file }}"
       when: not scap_file_stat.stat.exists
-
-    - name: Get available SCAP profiles
-      ansible.builtin.command: "oscap info {{ scap_file }}"
-      register: profile_list
-      changed_when: false
-
-    - name: Extract SCAP profile IDs
-      set_fact:
-        available_profiles: "{{ profile_list.stdout_lines | select('search', 'Id:') | list }}"
-
-    - name: Show available SCAP profiles
-      ansible.builtin.debug:
-        msg: "{{ available_profiles }}"
-
-    - name: Auto-select first available profile if content_profile not defined
-      set_fact:
-        content_profile: "{{ available_profiles[0].split(':')[-1] | trim }}"
-      when: content_profile is not defined and available_profiles | length > 0
-
-    - name: Fail if no SCAP profiles were found
-      ansible.builtin.fail:
-        msg: "No SCAP profiles found in {{ scap_file }}."
-      when: available_profiles | length == 0
 
     - name: Create Compliance Reports
       ansible.builtin.command: >
         oscap xccdf eval
         --profile xccdf_org.ssgproject.content_profile_{{ content_profile }}
-        --results report.xml
-        --report index.html
+        --results /tmp/report.xml
+        --report /tmp/index.html
         {{ scap_file }}
       register: command_result
       failed_when: "'Error' in command_result.stderr"
 
-    - name: Copy files to EE
+    - name: Copy files from target to control node
       ansible.builtin.fetch:
-        src: ./{{ item }}
+        src: "/tmp/{{ item }}"
         dest: "/tmp/{{ inventory_hostname }}/{{ item }}"
         flat: true
       loop:
         - report.xml
         - index.html
 
-    - name: Copy folders to reports host
+    - name: Copy reports to reports host
       ansible.builtin.copy:
         src: "/tmp/{{ inventory_hostname }}"
         dest: "{{ file_path }}"
@@ -111,4 +88,3 @@
         report_from_xml: "{{ scap_report_file.content | b64decode | ansible.utils.from_xml | replace('{http://checklists.nist.gov/xccdf/1.2}', '') }}"
         test_result: "{{ report_from_xml.Benchmark.TestResult }}"
         rule_result: "{{ test_result['rule-result'] }}"
-
