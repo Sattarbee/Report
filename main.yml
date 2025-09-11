@@ -1,43 +1,77 @@
 ---
-- name: Get and report patches installed yesterday with HTML report
-  hosts: all
-  become: yes
-  gather_facts: yes
+- name: Make sure openscap-scanner and scap-security guide are installed yum
+  ansible.builtin.yum:
+    name:
+      - openscap-scanner
+      - scap-security-guide
+    state: present
+  when: ansible_pkg_mgr == "yum"
 
+- name: Make sure openscap-scanner and scap-security guide are installed dnf
+  ansible.builtin.dnf:
+    name:
+      - openscap-scanner
+      - scap-security-guide
+    state: present
+  when: ansible_pkg_mgr == "dnf"
+
+- name: Check if  SCAP Security Guide (SSG) profile is available
+  ansible.builtin.stat:
+    path: "/usr/share/xml/scap/ssg/content/ssg-rhel{{ ansible_distribution_major_version }}-ds.xml"
+
+- name: Create Compliance Reports
+  ansible.builtin.command: "oscap xccdf eval --profile xccdf_org.ssgproject.content_profile_{{ content_profile }} --results report.xml --report index.html /usr/share/xml/scap/ssg/content/ssg-rhel{{ ansible_distribution_major_version }}-ds.xml"
+  register: command_result
+  failed_when: "'Error' in command_result.stderr"
+
+- name: Copy files to EE
+  ansible.builtin.fetch:
+    src: ./{{ item }}
+    dest: "/tmp/{{ inventory_hostname }}/{{ item }}"
+    flat: true
+  loop:
+    - report.xml
+    - index.html
+
+- name: Copy folders to reports host
+  ansible.builtin.copy:
+    src: "/tmp/{{ inventory_hostname }}"
+    dest: "{{ file_path }}"
+    owner: root
+    group: root
+    mode: '0644'
+  delegate_to: 172.25.225.97
+
+- name: DISPLAY LINK TO REPORT
+  ansible.builtin.debug:
+    msg: "http://172.25.225.97/openscap/{{ inventory_hostname }}"
+
+- name: Get results
+  ansible.builtin.slurp:
+    src: './report.xml'
+  register: scap_report_file
+
+- name: Set report facts
+  ansible.builtin.set_fact:
+    openscap_scan_results:
+      benchmark_id: "{{ test_result['benchmark']['@id'] }}"
+      total_rules_count: "{{ rule_result | length }}"
+      score: "{{ test_result['score']['#text'] }}%"
+      rule_results_count:
+        # notchecked: "{{ rule_result | json_query('@[?result==`notchecked`]') | length }}"
+        # fixed: "{{ rule_result | json_query('@[?result==`fixed`]') | length }}"
+        # error: "{{ rule_result | json_query('@[?result==`error`]') | length }}"
+        # notapplicable: "{{ rule_result | json_query('@[?result==`notapplicable`]') | length }}"
+        # informational: "{{ rule_result | json_query('@[?result==`informational`]') | length }}"
+        # unknown: "{{ rule_result | json_query('@[?result==`unknown`]') | length }}"
+        fail: "{{ rule_result | json_query('@[?result==`fail`]') | length }}"
+        pass: "{{ rule_result | json_query('@[?result==`pass`]') | length }}"
+      severity_of_failed_rules_count:
+        low: "{{ rule_result | json_query('@[?result==`fail`]') | selectattr('@severity', 'equalto', 'low') | list | length }}"
+        medium: "{{ rule_result | json_query('@[?result==`fail`]') | selectattr('@severity', 'equalto', 'medium') | list | length }}"
+        high: "{{ rule_result | json_query('@[?result==`fail`]') | selectattr('@severity', 'equalto', 'high') | list | length }}"
+    cacheable: true
   vars:
-    report_path: "/tmp/patch_report.html"
-
-  tasks:
-
-    - name: Define yesterday's date string
-      set_fact:
-        yesterday: "{{ lookup('pipe', 'date --date=\"yesterday\" \"+%d %b %Y\"') }}"
-
-    - name: Get list of packages installed yesterday
-      shell: "rpm -qa --last | grep '{{ yesterday }}'"
-      register: installed_yesterday
-      changed_when: false
-
-    - name: Format HTML report
-      copy:
-        dest: "{{ report_path }}"
-        content: |
-          <html>
-          <head><title>Patch Report - {{ inventory_hostname }}</title></head>
-          <body>
-          <h1>Patch Report for {{ inventory_hostname }}</h1>
-          <h2>Date: {{ yesterday }}</h2>
-          <pre>
-          {% if installed_yesterday.stdout %}
-          {{ installed_yesterday.stdout }}
-          {% else %}
-          No packages installed on {{ yesterday }}.
-          {% endif %}
-          </pre>
-          </body>
-          </html>
-
-    - name: Display path to HTML report
-      debug:
-        msg: "HTML patch report saved to {{ report_path }}"
-
+    report_from_xml: "{{ scap_report_file['content'] | b64decode | ansible.utils.from_xml | replace('{http://checklists.nist.gov/xccdf/1.2}', '') }}"
+    test_result: "{{ report_from_xml['Benchmark']['TestResult'] }}"
+    rule_result: "{{ test_result['rule-result'] }"
